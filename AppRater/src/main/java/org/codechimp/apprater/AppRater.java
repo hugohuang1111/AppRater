@@ -23,16 +23,19 @@ public class AppRater {
     private final static String PREF_APP_VERSION_NAME = "app_version_name";
     private final static String PREF_APP_VERSION_CODE = "app_version_code";
 
-    private final static int DAYS_UNTIL_PROMPT = 3;
-    private final static int LAUNCHES_UNTIL_PROMPT = 7;
+    private static int DAYS_UNTIL_PROMPT = 3;
+    private static int LAUNCHES_UNTIL_PROMPT = 7;
     private static int DAYS_UNTIL_PROMPT_FOR_REMIND_LATER = 3;
     private static int LAUNCHES_UNTIL_PROMPT_FOR_REMIND_LATER = 7;
+    private static int USER_EVENTS_UNTIL_PROMPT = 0;
     private static boolean isDark;
     private static boolean themeSet;
     private static boolean hideNoButton;
     private static boolean isVersionNameCheckEnabled;
     private static boolean isVersionCodeCheckEnabled;
     private static boolean isCancelable = true;
+
+    private static AppRaterListener listener = null;
 
     private static Market market = new GoogleMarket();
 
@@ -71,7 +74,6 @@ public class AppRater {
      * @param launchesUntilPrompt
      */
     public static void setNumLaunchesForRemindLater(int launchesUntilPrompt) {
-
         LAUNCHES_UNTIL_PROMPT_FOR_REMIND_LATER = launchesUntilPrompt;
     }
 
@@ -136,6 +138,7 @@ public class AppRater {
         ApplicationRatingInfo ratingInfo = ApplicationRatingInfo.createApplicationInfo(context);
         int days;
         int launches;
+        int userEvents = USER_EVENTS_UNTIL_PROMPT;
         if (isVersionNameCheckEnabled) {
             if (!ratingInfo.getApplicationVersionName().equals(prefs.getString(PREF_APP_VERSION_NAME, "none"))) {
                 editor.putString(PREF_APP_VERSION_NAME, ratingInfo.getApplicationVersionName());
@@ -160,6 +163,8 @@ public class AppRater {
             launches = launchesUntilPrompt;
         }
 
+        long user_events_count = prefs.getLong(PREF_LAUNCH_COUNT, 0);
+
         // Increment launch counter
         long launch_count = prefs.getLong(PREF_LAUNCH_COUNT, 0) + 1;
         editor.putLong(PREF_LAUNCH_COUNT, launch_count);
@@ -171,7 +176,9 @@ public class AppRater {
         }
         // Wait for at least the number of launches or the number of days used
         // until prompt
-        if (launch_count >= launches || (System.currentTimeMillis() >= date_firstLaunch + (days * 24 * 60 * 60 * 1000))) {
+        if (launch_count >= launches
+                && (System.currentTimeMillis() >= date_firstLaunch + (days * 24 * 60 * 60 * 1000))
+                && user_events_count >= userEvents) {
             showRateAlertDialog(context, editor);
         }
         commitOrApply(editor);
@@ -257,6 +264,9 @@ public class AppRater {
         builder.setPositiveButton(context.getString(R.string.rate),
                 new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
+                        if (null != listener ) {
+                            listener.onRateBtnClicked();
+                        }
                         rateNow(context);
                         if (editor != null) {
                             editor.putBoolean(PREF_DONT_SHOW_AGAIN, true);
@@ -269,6 +279,9 @@ public class AppRater {
         builder.setNeutralButton(context.getString(R.string.later),
                 new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
+                        if (null != listener) {
+                            listener.onLaterBtnClicked();
+                        }
                         if (editor != null) {
                             Long date_firstLaunch = System.currentTimeMillis();
                             editor.putLong(PREF_FIRST_LAUNCHED, date_firstLaunch);
@@ -284,6 +297,9 @@ public class AppRater {
             builder.setNegativeButton(context.getString(R.string.no_thanks),
                     new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface dialog, int id) {
+                            if (null != listener) {
+                                listener.onNegativeBtnClicked();
+                            }
                             if (editor != null) {
                                 editor.putBoolean(PREF_DONT_SHOW_AGAIN, true);
                                 editor.putBoolean(PREF_REMIND_LATER, false);
@@ -297,6 +313,9 @@ public class AppRater {
                     });
         }
         builder.show();
+        if (null != listener) {
+            listener.onRatePromtShow();
+        }
     }
 
     @SuppressLint("NewApi")
@@ -316,6 +335,28 @@ public class AppRater {
         editor.putLong(PREF_LAUNCH_COUNT, 0);
         long date_firstLaunch = System.currentTimeMillis();
         editor.putLong(PREF_FIRST_LAUNCHED, date_firstLaunch);
+        commitOrApply(editor);
+    }
+
+    public static void setListener(AppRaterListener lis) { listener = lis; }
+
+    public static void setNumDays(int daysUntilPromt) {
+        DAYS_UNTIL_PROMPT = daysUntilPromt;
+    }
+
+    public  static void setNumLauches(int lauchesUntilPrompt) {
+        LAUNCHES_UNTIL_PROMPT = lauchesUntilPrompt;
+    }
+
+    public static void setUserEventsUntilPrompt(int userEvents) {
+        USER_EVENTS_UNTIL_PROMPT = userEvents;
+    }
+
+    public static void incrementUserEvent(final Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        long launch_count = prefs.getLong(PREF_LAUNCH_COUNT, 0) + 1;
+        editor.putLong(PREF_LAUNCH_COUNT, launch_count);
         commitOrApply(editor);
     }
 }
